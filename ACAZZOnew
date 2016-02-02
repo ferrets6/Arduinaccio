@@ -1,0 +1,235 @@
+/*
+  HC-SR04 Ping distance sensor]
+  VCC to arduino 5v GND to arduino GND
+  Echo to Arduino pin 13 Trig to Arduino pin 12
+  Red POS to Arduino pin 11
+  Green POS to Arduino pin 10
+  560 ohm resistor to both LED NEG and GRD power rail
+  More info at: http://goo.gl/kJ8Gl
+  Original code improvements to the Ping sketch sourced from Trollmaker.com
+  Some code and wiring inspired by http://en.wikiversity.org/wiki/User:Dstaub/robotcar
+*/
+
+//******************************* DICHIARAZIONI *******************************
+
+#define trigPin 13
+#define echoPin 12
+#define R_led 2
+#define G_led 3
+
+// motor one
+int enR = 10;
+int in1 = 9;
+int in2 = 8;
+// motor two
+int enL = 5;
+int in3 = 7;
+int in4 = 6;
+
+char cestino;
+
+char first_RX_byte, second_RX_byte, third_RX_byte;
+
+long duration, distance;
+
+int ON = 1;
+
+
+
+//******************************* FUNZIONI *******************************
+
+// Funzioni per gestire i MOTORI, impostare velocità, spegnerli, andare avanti o indietro
+
+void left_motor_speed(int vel) {
+  // set speed to left motor
+  analogWrite(enL, vel);
+}
+
+void right_motor_speed(int vel) {
+  // set speed to right motor
+  analogWrite(enR, vel);
+}
+
+void motors_stop() {
+  // stop motors
+  analogWrite(enR, 0);
+  analogWrite(enL, 0);
+}
+
+void left_motor_forward() {
+  // allow left motor to go forward
+  digitalWrite(in3, LOW);
+  digitalWrite(in4, HIGH);
+}
+
+void left_motor_backwards() {
+  // allow left motor to go backwards
+  digitalWrite(in3, HIGH);
+  digitalWrite(in4, LOW);
+}
+
+void right_motor_forward() {
+  // allow left motor to go forward
+  digitalWrite(in1, LOW);
+  digitalWrite(in2, HIGH);
+}
+
+void right_motor_backwards() {
+  // allow right motor to go backwards
+  digitalWrite(in1, HIGH);
+  digitalWrite(in2, LOW);
+}
+
+
+// Funzioni per leggere o liberare il buffer della porta seriale, connessa al modulo Bluetooth HC06 (MAC Address: 98:D3:31:20:40:EB)
+
+void clean_buffer() {
+  while (Serial.available() > 0) {  // finché ci sono byte in attesa al buffer
+    cestino = Serial.read();        // sovrascrivo in continuazione la variabile 'cestino'
+  }
+}
+
+void read_buffer() {
+  // legge il buffer, per ora riceviamo solo tre byte (char, ASCII)
+
+  first_RX_byte = Serial.read();   // Read a character
+  delay(10);                       // piccolo delay per aspettare il byte in arrivo al buffer
+  second_RX_byte = Serial.read();
+  delay(10);
+  third_RX_byte = Serial.read();
+}
+
+
+// Funzione per accendere il sensore a ultrasuoni
+
+void distance_sensor() {
+  // Rivedere e migliorare la parte di cacolo della distanza.
+  // Controllare lunghezza impulso e tempo risposta
+  // Funzione https://www.arduino.cc/en/Reference/PulseIn Arduino
+
+  digitalWrite(trigPin, LOW);  // Added this line
+  delayMicroseconds(2); // Added this line
+  digitalWrite(trigPin, HIGH);
+  //  delayMicroseconds(1000); - Removed this line
+  delayMicroseconds(10); // Added this line
+  digitalWrite(trigPin, LOW);
+
+  duration = pulseIn(echoPin, HIGH);
+  distance = (duration / 2) / 29.1;
+
+
+  if (distance < 8) {  // This is where the LED On/Off happens
+    digitalWrite(R_led, HIGH); // When the Red condition is met, the Green LED should turn off
+    digitalWrite(G_led, LOW);
+    motors_stop();
+  }
+  else {
+    digitalWrite(R_led, LOW);
+    digitalWrite(G_led, HIGH);
+  }
+
+  delay(500);
+}
+
+
+// Funzione per decidere l'azione da eseguire, sulla base di ciò che si è ricevuto al buffer
+
+void next_action() {
+  int number1 = first_RX_byte;      //converto i byte ricevuti in interi
+  int number2 = second_RX_byte;
+  int number3 = third_RX_byte;
+
+  if (number3 < 4) {              // se è vero, ho ricevuto un valore di velocità dei motori
+
+    switch (number3) {               //controllo i versi dei motori, se vanno avanti o indietro
+      case 0 :                        //entrambi i motori in avanti
+        left_motor_forward();
+        right_motor_forward();
+        break;
+      case 1 :                        //motore sinistro in avanti, destro in indietro
+        left_motor_forward();
+        right_motor_backwards();
+        break;
+      case 2 :                      //motore destro in avanti, sinistro in indietro
+        left_motor_backwards();
+        right_motor_forward();
+        break;
+      case 3 :                      //entrambi i motori in indietro
+        left_motor_backwards();
+        right_motor_backwards();
+        break;
+    }
+
+    if (ON == 1) {                  // se il robot è spento non imposto alcuna velocità sui motori
+      left_motor_speed(number1);      //imposto le velocità dei motori
+      right_motor_speed(number2);
+    }
+  }
+
+  else {                            //altrimenti ho ricevuto un comando diverso
+    switch (number3) {
+      case 10:
+        ON = 1;                     //accendi il robot
+        break;
+      case 11 :                     //spegni il robot
+        ON = 0;
+        break;
+    }
+  }
+}
+
+
+
+//******************************* SETUP *******************************
+
+void setup() {
+  Serial.begin (9600);
+  pinMode(trigPin, OUTPUT);       // sensore ultrasuoni
+  pinMode(echoPin, INPUT);
+
+  pinMode(R_led, OUTPUT);         // led
+  pinMode(G_led, OUTPUT);
+
+  pinMode(enR, OUTPUT);           // motori
+  pinMode(enL, OUTPUT);
+  pinMode(in1, OUTPUT);
+  pinMode(in2, OUTPUT);
+  pinMode(in3, OUTPUT);
+  pinMode(in4, OUTPUT);
+
+  // turn on motors
+  digitalWrite(in1, LOW);
+  digitalWrite(in2, HIGH);
+  digitalWrite(in3, LOW);
+  digitalWrite(in4, HIGH);
+  delay(100);
+
+  clean_buffer();
+}
+
+
+
+//******************************* LOOP *******************************
+
+void loop() {
+  if (Serial.available() > 0) {     // Messaggio in arrivo dalla seriale / Bluetooth
+    read_buffer();      // leggo il buffer, nel caso fosse arrivato qualcosa
+    next_action();      // decido cosa fare, sulla base di ciò che ho ricevuto
+  }
+
+  if (ON == 1) {                    // Robot ACCESO
+    distance_sensor();
+  }
+
+  else {                            // Robot SPENTO
+    motors_stop();                  // fermo i motori
+
+    digitalWrite(R_led, HIGH);      // lampeggiano i led
+    digitalWrite(G_led, HIGH);
+    delay(250);
+    digitalWrite(R_led, LOW);
+    digitalWrite(G_led, LOW);
+    delay(250);
+  }
+
+}
